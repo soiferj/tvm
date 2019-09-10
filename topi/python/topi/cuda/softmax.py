@@ -17,11 +17,22 @@
 # pylint: disable=invalid-name, unused-variable, trailing-whitespace
 """Schedule for softmax operator"""
 import tvm
+from tvm import autotvm
 from .. import generic
 from .injective import _schedule_injective
 
-@generic.schedule_softmax.register(["cuda", "gpu"])
-def schedule_softmax(outs):
+def get_possible_num_threads(minimum = 32):
+    """ Returns list of possible thread counts to tune over """
+    possible_num_threads = []
+    cur_num_threads = tvm.target.current_target(allow_none=False).max_num_threads
+    while (cur_num_threads >= minimum):
+        possible_num_threads.append(cur_num_threads)
+        cur_num_threads /= 2
+    
+    return possible_num_threads
+
+@autotvm.register_topi_schedule(generic.schedule_softmax, ["cuda", "gpu"], "direct")
+def schedule_softmax(cfg, outs):
     """Schedule for softmax op.
 
     Parameters
@@ -52,15 +63,17 @@ def schedule_softmax(outs):
         raise ValueError('Tag is expected to be softmax_output or log_softmax_output. \
                          Got {0}'.format(op_tag))
 
+    cfg.define_knob("num_threads", get_possible_num_threads())
+
     if len(softmax.shape) > 2:
         ops = [max_elem.op, expsum.op, softmax.op]
         if exp != None:
             ops.append(exp.op)
             
         for op in ops:
-            s = _schedule_injective(op, s)
+            s = _schedule_injective(op, s, cfg["num_threads"].val)
     else:
-        num_thread = 64
+        num_thread = cfg["num_threads"].val
         block_x = tvm.thread_axis("blockIdx.x")
         thread_x = tvm.thread_axis((0, num_thread), "threadIdx.x")
 

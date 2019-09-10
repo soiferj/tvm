@@ -19,11 +19,13 @@
 import tvm
 from .. import generic, util
 
-def _schedule_injective(op, sch):
+def _schedule_injective(op, sch, num_thread = -1):
     x = op.output(0)
     fused = sch[x].fuse(*sch[x].op.axis)
-    num_thread = tvm.target.current_target(allow_none=False).max_num_threads
     max_block = 256
+
+    if num_thread == -1:
+        num_thread = tvm.target.current_target(allow_none=False).max_num_threads
 
     try:
         const_size = util.get_const_int(util.prod(x.shape))
