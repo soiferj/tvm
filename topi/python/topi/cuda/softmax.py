@@ -18,7 +18,7 @@
 """Schedule for softmax operator"""
 import tvm
 from tvm import autotvm
-from .. import generic
+from .. import generic, nn
 from .injective import _schedule_injective
 
 def get_possible_num_threads(minimum = 32):
@@ -30,6 +30,8 @@ def get_possible_num_threads(minimum = 32):
         cur_num_threads /= 2
     
     return possible_num_threads
+
+autotvm.register_topi_compute(nn.softmax, ["cuda", "gpu"], "direct", nn.softmax.fdefault)
 
 @autotvm.register_topi_schedule(generic.schedule_softmax, ["cuda", "gpu"], "direct")
 def schedule_softmax(cfg, outs):
@@ -64,6 +66,8 @@ def schedule_softmax(cfg, outs):
                          Got {0}'.format(op_tag))
 
     cfg.define_knob("num_threads", get_possible_num_threads())
+    if cfg.is_fallback:
+        cfg["num_threads"].val = 64
 
     if len(softmax.shape) > 2:
         ops = [max_elem.op, expsum.op, softmax.op]

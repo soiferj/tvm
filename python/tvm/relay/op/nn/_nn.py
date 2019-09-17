@@ -28,6 +28,11 @@ reg.register_schedule("nn.relu", schedule_injective)
 reg.register_pattern("nn.relu", OpPattern.ELEMWISE)
 
 # softmax
+@reg.register_compute("nn.softmax")
+def compute_softmax(attrs, inputs, out_type, target):
+    """Compute definition of softmax"""
+    return [topi.nn.softmax(inputs[0], attrs.axis)]
+
 @reg.register_schedule("nn.softmax")
 def schedule_softmax(_, outputs, target):
     """Schedule definition of softmax"""
