@@ -126,14 +126,18 @@ def test_densenet():
     mod, params = testing.densenet.get_workload(batch_size=1)
     benchmark_execution(mod, params)
 
+def test_bert():
+    mod, params = testing.bert.get_workload()
+    benchmark_execution(mod, params)
 
 if __name__ == '__main__':
-    test_resnet()
-    test_vgg()
-    test_squeezenet()
-    test_mobilenet()
-    test_densenet()
-    test_inception_v3()
-    test_mlp()
-    test_dqn()
-    test_dcgan()
+    # test_resnet()
+    # test_vgg()
+    # test_squeezenet()
+    # test_mobilenet()
+    # test_densenet()
+    # test_inception_v3()
+    # test_mlp()
+    # test_dqn()
+    # test_dcgan()
+    test_bert()

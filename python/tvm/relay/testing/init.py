@@ -128,7 +128,7 @@ class Xavier(Initializer):
             raise ValueError("Unknown random type")
 
 
-def create_workload(net, initializer=None, seed=0):
+def create_workload(net, initializer=None, seed=0, inputs=["data"]):
     """Helper function to create benchmark image classification workload.
 
     Parameters
@@ -158,7 +158,7 @@ def create_workload(net, initializer=None, seed=0):
     initializer = initializer if initializer else Xavier()
     params = {}
     for k, v in shape_dict.items():
-        if k == "data":
+        if any(inp in k for inp in inputs):
             continue
         init_value = np.zeros(v.concrete_shape).astype(v.dtype)
         initializer(k, init_value)
