@@ -33,6 +33,7 @@
 #include <topi/broadcast.h>
 #include <topi/reduction.h>
 #include <topi/nn.h>
+#include <topi/contrib/tensorflow.h>
 #include <vector>
 #include "../op_common.h"
 #include "../../../arithmetic/compute_expr.h"
@@ -2648,6 +2649,78 @@ RELAY_REGISTER_OP("one_hot")
 .add_type_rel("OneHot", OneHotRel)
 .set_attr<FTVMCompute>("FTVMCompute", OneHotCompute)
 .set_attr<TOpPattern>("TOpPattern", kOutEWiseFusable);
+
+// relay.tensorflow_native
+TVM_REGISTER_NODE_TYPE(TensorFlowNativeAttrs);
+
+bool TensorFlowNativeRel(const Array<Type>& types,
+                         int num_inputs,
+                         const Attrs& attrs,
+                         const TypeReporter& reporter) {
+  // `types` contains: [input0, input1, output]
+  CHECK_EQ(types.size(), 3);
+  const auto* input1 = types[0].as<TensorTypeNode>();
+  const auto* input2 = types[0].as<TensorTypeNode>();
+  CHECK(input1);
+  CHECK(input2);
+
+  const auto param = attrs.as<TensorFlowNativeAttrs>();
+  CHECK(param->input1name != "");
+  CHECK(param->input2name != "");
+  CHECK(param->outputname != "");
+  CHECK(param->graph_def_str != "");
+  CHECK(param->outshape.size() > 0);
+
+  Array<IndexExpr> oshape;
+  for (int i = 0; i < param->outshape.size(); i++) {
+    oshape.push_back(Integer(param->outshape[i]));
+  }
+
+  reporter->Assign(types[2], TensorTypeNode::make(oshape, input1->dtype));
+  return true;
+}
+
+Array<Tensor> TensorFlowNativeCompute(const Attrs& attrs,
+                                      const Array<Tensor>& inputs,
+                                      const Type& out_type,
+                                      const Target& target) {
+  const auto* param = attrs.as<TensorFlowNativeAttrs>();
+  CHECK(param != nullptr);
+  return Array<Tensor> {
+    topi::contrib::tensorflow_native(inputs[0], inputs[1], param->input1name, param->input2name, param->outputname, param->graph_def_str)
+  };
+}
+
+Expr MakeTensorFlowNative(Expr input1,
+                          Expr input2,
+                          std::string input1name,
+                          std::string input2name,
+                          std::string outputname,
+                          std::string graph_def_str,
+                          Array<Integer> outshape) {
+  auto attrs = make_node<TensorFlowNativeAttrs>();
+  attrs->input1name = input1name;
+  attrs->input2name = input2name;
+  attrs->outputname = outputname;
+  attrs->graph_def_str = graph_def_str;
+  attrs->outshape = outshape;
+  static const Op& op = Op::Get("tensorflow_native");
+  return CallNode::make(op, {input1, input2}, Attrs(attrs), {});
+}
+
+TVM_REGISTER_API("relay.op._make.tensorflow_native")
+.set_body_typed(MakeTensorFlowNative);
+
+RELAY_REGISTER_OP("tensorflow_native")
+.describe(R"code(TensorFlow native op)code" TVM_ADD_FILELINE)
+.set_attrs_type<TensorFlowNativeAttrs>()
+.set_num_inputs(2)
+.add_argument("input0", "Tensor", "Locations to set to on_value.")
+.add_argument("input1", "Expr", "Value to fill at indices.")
+.set_support_level(10)
+.add_type_rel("TensorFlowNative", TensorFlowNativeRel)
+.set_attr<FTVMCompute>("FTVMCompute", TensorFlowNativeCompute)
+.set_attr<TOpPattern>("TOpPattern", kOpaque);
 
 }  // namespace relay
 }  // namespace tvm

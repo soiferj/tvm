@@ -2012,8 +2012,7 @@ class GraphProto(object):
         missing_operators = self._parse_import_prerequisites(graph)
 
         if missing_operators:
-            raise NotImplementedError( \
-                "The following operators are not implemented: {}".format(missing_operators))
+            print("The following operators are not implemented and will be replaced with the native TF runtime: {0}".format(missing_operators))
 
         control_flow_node_map = defaultdict(set)
         for node in graph.node:
@@ -2091,6 +2090,7 @@ class GraphProto(object):
 
                 # Fill shapes for all inputs in a list
                 inputs = []
+                input_names = []
                 for i in node.input:
                     # Some TensorFlow operators internally maintain execution layers
                     # and their output name includes the layer number along with
@@ -2112,6 +2112,7 @@ class GraphProto(object):
                             input_shape = self._output_shapes[node_name][0]
                         inputs.append(in_sym[0])
                         input_shapes[in_sym[0]] = input_shape
+                        input_names.append(tensor_name[0])
 
                 attr['_input_shapes'] = input_shapes
 
@@ -2119,6 +2120,9 @@ class GraphProto(object):
                     op = self._convert_control_flow_operator(node, inputs,
                                                              attr,
                                                              control_flow_node_map)
+                elif node.op in missing_operators:
+                    graph_def_str = graph.SerializeToString().decode("utf-8")
+                    op = _op.tensorflow_native(inputs[0], inputs[1], input_names[0], input_names[1], node.name, graph_def_str)
                 else:
                     op = self._convert_operator(node.op, inputs, attr, graph)
 

@@ -69,6 +69,8 @@
 #include <topi/rocm/dense.h>
 #include <topi/rocm/normalization.h>
 
+#include <topi/contrib/tensorflow.h>
+
 namespace topi {
 
 using namespace tvm;
@@ -438,6 +440,15 @@ TVM_REGISTER_GLOBAL("topi.one_hot")
   DataType dtype = args[5];
   *rv = one_hot(args[0], args[1], args[2], depth, axis, dtype);
   });
+
+TVM_REGISTER_GLOBAL("topi.tensorflow_native")
+.set_body([](TVMArgs args, TVMRetValue *rv) {
+  std::string input1name = args[2];
+  std::string input2name = args[3];
+  std::string outputname = args[4];
+  std::string graph_def_str = args[5];
+  *rv = topi::contrib::tensorflow_native(args[0], args[1], input1name, input2name, outputname, graph_def_str);
+});
 
 /* Ops from nn/upsampling.h */
 TVM_REGISTER_GLOBAL("topi.nn.upsampling")

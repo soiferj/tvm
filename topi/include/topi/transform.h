@@ -1272,7 +1272,7 @@ inline Tensor one_hot(const Tensor& indices,
                       int axis,
                       const Type& dtype,
                       const std::string name = "T_one_hot",
-                      const std::string tag = kInjective) {
+                      const std::string tag = "one_hot") {
   Array<Expr> oshape;
   int ndim = indices->shape.size() + 1;
   int indices_index = 0;

@@ -250,6 +250,7 @@ include(cmake/modules/contrib/MicroStandaloneRuntime.cmake)
 include(cmake/modules/contrib/Sort.cmake)
 include(cmake/modules/contrib/NNPack.cmake)
 include(cmake/modules/contrib/HybridDump.cmake)
+include(cmake/modules/contrib/TensorFlow.cmake)
 
 if(NOT MSVC)
   include(CheckCXXCompilerFlag)

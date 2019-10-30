@@ -60,6 +60,11 @@ _reg.register_schedule("gather_nd", schedule_injective)
 _reg.register_schedule("sequence_mask", schedule_injective)
 _reg.register_schedule("one_hot", schedule_injective)
 
+@_reg.register_schedule("tensorflow_native")
+def schedule_bitserial_conv2d(attrs, outs, target):
+    """Schedule definition for tensorflow native"""
+    return topi.generic.schedule_extern(outs)
+
 
 # layout_transform
 _reg.register_schedule("layout_transform", schedule_injective)

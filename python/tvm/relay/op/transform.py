@@ -830,3 +830,6 @@ def one_hot(indices, on_value, off_value, depth, axis, dtype):
              [0, 0, 1]]
     """
     return _make.one_hot(indices, on_value, off_value, depth, axis, dtype)
+
+def tensorflow_native(input0, input1, input0name, input1name, outputname, graph_def_str):
+    return _make.tensorflow_native(input0, input1, input0name, input1name, outputname, graph_def_str, [2,3])

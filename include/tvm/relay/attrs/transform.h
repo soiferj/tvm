@@ -320,6 +320,28 @@ struct ArgWhereAttrs : public tvm::AttrsNode<ArgWhereAttrs> {
   }
 };  // struct ArgWhereAttrs
 
+/*! \brief Attributes for TensorFlowNative operator */
+struct TensorFlowNativeAttrs : public tvm::AttrsNode<TensorFlowNativeAttrs> {
+  std::string input1name;
+  std::string input2name;
+  std::string outputname;
+  std::string graph_def_str;
+  Array<Integer> outshape;
+
+  TVM_DECLARE_ATTRS(TensorFlowNativeAttrs, "relay.attrs.TensorFlowNativeAttrs") {
+    TVM_ATTR_FIELD(input1name).set_default("")
+        .describe("Name of input 1");
+    TVM_ATTR_FIELD(input2name).set_default("")
+        .describe("Name of input 2");
+    TVM_ATTR_FIELD(outputname).set_default("")
+        .describe("Name of output");
+    TVM_ATTR_FIELD(graph_def_str).set_default("")
+        .describe("Graph def string that contains input and output nodes");
+    TVM_ATTR_FIELD(outshape).set_default(Array<Integer>())
+        .describe("Output shape");
+  }
+}; // struct TensorFlowNativeAttrs
+
 }  // namespace relay
 }  // namespace tvm
 #endif  // TVM_RELAY_ATTRS_TRANSFORM_H_
