@@ -40,6 +40,7 @@ from .common import infer_type as _infer_type
 from .common import infer_shape as _infer_shape
 from .common import infer_channels as _infer_channels
 from .common import infer_value as _infer_value
+from .common import infer_value_simulated as _infer_value_simulated
 
 __all__ = ['from_tensorflow']
 
@@ -1004,7 +1005,7 @@ def _transpose():
         try:
             axes = _get_list_param(params, inputs[1])
         except (IndexError, KeyError):
-            axes = None
+            axes = _infer_value_simulated(inputs[1], params)
         return _op.transpose(inputs[0], axes=axes)
     return _impl
 
@@ -1046,9 +1047,14 @@ def _rank():
 def _range():
     def _impl(inputs, attr, params):
         start = _get_param(params, inputs[0])[0]
-        limit = _get_param(params, inputs[1])[0] \
-            if hasattr(inputs[1], "name_hint") or isinstance(inputs[1], _expr.Constant) \
-            else params.pop('Rank').asnumpy()[0]
+        if hasattr(inputs[1], "name_hint") or isinstance(inputs[1], _expr.Constant):
+            limit = _get_param(params, inputs[1])[0]
+        else:
+            # parameter can be named 'Rank, 'Rank_1', 'scope/Rank', etc...
+            if any(['Rank' in param for param in params]):
+                limit = params.pop('Rank').asnumpy()[0]
+            else:
+                limit = _infer_value_simulated(inputs[1], params).asnumpy()[0]
         delta = _get_param(params, inputs[2])[0]
         dtype = attr['dtype'].name if 'dtype' in attr else "int32"
         return AttrCvt(
