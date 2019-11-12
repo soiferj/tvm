@@ -15,7 +15,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-# pylint: disable=import-self, invalid-name, unused-argument, too-many-lines, len-as-condition
+# pylint: disable=import-self, invalid-name, unused-argument, too-many-lines, len-as-condition, broad-except
 """TF: Tensorflow frontend."""
 from __future__ import absolute_import as _abs
 from __future__ import print_function
@@ -90,6 +90,12 @@ def _get_list_param(params, input_node):
 
 def _get_tuple_param(params, input_node):
     return tuple(_get_param(params, input_node))
+
+def _need_module_for_shape_inference(op):
+    return op in ['StridedSlice']
+
+def _need_prelude_for_shape_inference(op):
+    return "TensorArray" in op
 
 def _rsqrt():
     def _impl(inputs, attr, params):
@@ -613,13 +619,25 @@ def _slice():
 def _reshape():
     def _impl(inputs, attr, params):
         pop_node = inputs.pop(1)
+
         try:
             shape_arg = _get_tuple_param(params, pop_node)
         except AttributeError:
             # Shape operator is already pruned, hence
             # try to infer shape by precompute prune if possible.
-            params_new = _infer_value(pop_node, params)
-            shape_arg = tuple(params_new.asnumpy().astype('int64').flatten())
+            try:
+                params_new = _infer_value(pop_node, params)
+                shape_arg = tuple(params_new.asnumpy().astype('int64').flatten())
+            except Exception:
+                # Deal with symbolic shape case.
+                # Currently only shape_of can be the direct ancestor.
+                if not isinstance(pop_node, tvm.relay.expr.Call) or \
+                        "shape_of" not in str(pop_node.op):
+                    raise RuntimeError("If shape operator is used in reshape to "
+                                       "express reshape_like, shape_of must be "
+                                       "the direct ancestor of reshape when input "
+                                       "shape is symbolic.")
+                return _op.reshape_like(inputs[0], pop_node.args[0])
         return AttrCvt(
             op_name="reshape",
             extras={'newshape': shape_arg},
@@ -789,7 +807,18 @@ def _relu6():
 
 def _shape():
     def _impl(inputs, attr, params):
-        return np.array(attr['_input_shapes'][inputs[0]], dtype='int32')
+        is_symbolic_shape = False
+        for axis in attr['_input_shapes'][inputs[0]]:
+            if not isinstance(axis, (int, tvm.expr.IntImm, tvm.expr.UIntImm)):
+                is_symbolic_shape = True
+                break
+
+        if is_symbolic_shape:
+            ret = _op.shape_of(inputs[0], dtype='int32')
+        else:
+            ret = np.array(attr['_input_shapes'][inputs[0]], dtype='int32')
+        return ret
+
     return _impl
 
 def _fill():
@@ -852,11 +881,14 @@ def _gather():
             axis = _get_num_param(params, inputs.pop(2))
         else:
             axis = 0
+        if int(attr.get('batch_dims', 0)) != 0:
+            raise tvm.error.OpAttributeUnImplemented(
+                'Attribute batch_dims is not supported')
         new_input = inputs[0:2]
         return AttrCvt(op_name="take",
                        extras={'axis': tvm.const(axis, 'int32')},
                        ignores=['Tindices', 'Tparams', 'validate_indices',
-                                'Taxis', '_class'])(new_input, attr)
+                                'Taxis', '_class', 'batch_dims'])(new_input, attr)
     return _impl
 
 def _gather_nd():
@@ -868,7 +900,7 @@ def _gather_nd():
     return _impl
 
 def _stridedSlice():
-    def _impl(inputs, attr, params):
+    def _impl(inputs, attr, params, mod):
         """Strided Slice.
         Operator description: https://www.tensorflow.org/api_docs/python/tf/strided_slice
         Tensorflow mask validation: https://github.com/tensorflow/tensorflow/blob/master/
@@ -951,7 +983,7 @@ def _stridedSlice():
         if begin_mask or end_mask or ellipsis_mask or new_axis_mask or shrink_axis_mask:
             begin, end, stride, fshape_indices = _transform_mask(stride_dim, ellipsis_mask)
         out = _op.strided_slice(inputs[0], begin=begin, end=end, strides=stride)
-        out_shape = _infer_shape(out)
+        out_shape = _infer_shape(out, mod=mod)
         if not fshape_indices:
             fshape_indices = range(len(out_shape))
 
@@ -1457,6 +1489,7 @@ _convert_map = {
     'Square'                            : _square(),
     'SquaredDifference'                 : _squared_difference(),
     'Squeeze'                           : _squeeze(),
+    'StopGradient'                      : _identity(),
     'StridedSlice'                      : _stridedSlice(),
     'Sub'                               : _elemwise('subtract'),
     'Sum'                               : _sum(),
@@ -2151,7 +2184,8 @@ class GraphProto(object):
 
                 # Infer shapes even without specifying "add_shapes=True"
                 if output_shapes == [None]:
-                    out_shapes = [_infer_shape(node_item) for node_item in self._nodes[node.name]]
+                    out_shapes = [_infer_shape(node_item, self._mod)
+                                  for node_item in self._nodes[node.name]]
                     self._output_shapes[node.name] = out_shapes
 
                 if self._output_shapes[node.name] and shape and node.name in shape:
@@ -2161,7 +2195,7 @@ class GraphProto(object):
             node_output = self._nodes[node.name]
             if shape and (not self._output_shapes[node.name][0]
                           or -1 in self._output_shapes[node.name][0]):
-                out_shapes = [_infer_shape(node_item) for node_item in node_output]
+                out_shapes = [_infer_shape(node_item, self._mod) for node_item in node_output]
                 self._output_shapes[node.name] = out_shapes
 
         out = []
@@ -2452,8 +2486,10 @@ class GraphProto(object):
         if op_name in identity_list:
             sym = get_relay_op(op_name)(*inputs, **attrs)
         elif op_name in convert_map:
-            if 'TensorArray' in op_name:
+            if _need_prelude_for_shape_inference(op_name):
                 sym = convert_map[op_name](inputs, attrs, self._params, self._prelude)
+            elif _need_module_for_shape_inference(op_name):
+                sym = convert_map[op_name](inputs, attrs, self._params, self._mod)
             else:
                 sym = convert_map[op_name](inputs, attrs, self._params)
 
