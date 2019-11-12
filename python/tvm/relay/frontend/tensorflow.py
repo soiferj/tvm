@@ -2178,9 +2178,10 @@ class GraphProto(object):
                     raise RuntimeError("unexpected type %s" % type(op))
 
                 self._nodes[node.name] = op
+
                 # account for gradient flow output
-                if 'TensorArray' in node.name:
-                    self._nodes[node.name + ':1'] = _expr.const(0)
+                if node.op == "TensorArrayV3":
+                    self._nodes[node.name + ':1'] = _expr.const(0, dtype="int32")
 
                 # Infer shapes even without specifying "add_shapes=True"
                 if output_shapes == [None]:
